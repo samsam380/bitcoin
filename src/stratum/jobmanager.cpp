@@ -4,6 +4,11 @@
 
 #include <stratum/jobmanager.h>
 
+#include <common/hex.h>
+#include <primitives/transaction.h>
+#include <serialize.h>
+#include <algorithm>
+#include <streams.h>
 #include <tinyformat.h>
 #include <util/strencodings.h>
 
@@ -19,17 +24,39 @@ std::string JobManager::NewJobId()
     return strprintf("%08x", m_next_job_id++);
 }
 
+std::pair<std::string, std::string> JobManager::BuildCoinbaseSplit(const CTransaction& coinbase) const
+{
+    CMutableTransaction cb{coinbase};
+    if (cb.vin.empty()) return {"", ""};
+
+    const size_t marker_size = 4 + m_extranonce2_size;
+    std::vector<unsigned char> marker(marker_size);
+    for (size_t i = 0; i < marker_size; ++i) marker[i] = static_cast<unsigned char>(0xf0 + (i & 0x0f));
+
+    cb.vin[0].scriptSig.insert(cb.vin[0].scriptSig.end(), marker.begin(), marker.end());
+    CDataStream ss_tx(SER_NETWORK, PROTOCOL_VERSION);
+    ss_tx << TX_WITH_WITNESS(CTransaction{cb});
+    const std::vector<unsigned char> bytes{ss_tx.begin(), ss_tx.end()};
+
+    const auto it = std::search(bytes.begin(), bytes.end(), marker.begin(), marker.end());
+    if (it == bytes.end()) return {HexStr(bytes), ""};
+
+    const size_t pos = it - bytes.begin();
+    const std::vector<unsigned char> b1(bytes.begin(), bytes.begin() + pos);
+    const std::vector<unsigned char> b2(bytes.begin() + pos + marker.size(), bytes.end());
+    return {HexStr(b1), HexStr(b2)};
+}
+
 std::optional<Job> JobManager::RefreshJobs(RefreshReason reason)
 {
     auto tpl = m_template_provider.Refresh(reason);
     if (!tpl) return std::nullopt;
 
     Job job;
-    LOCK(m_mutex);
-    job.id = NewJobId();
     job.prevhash = uint256S(tpl->prevhash);
-    job.coinb1 = "";
-    job.coinb2 = "";
+    const auto [coinb1, coinb2] = BuildCoinbaseSplit(*tpl->block.vtx.at(0));
+    job.coinb1 = coinb1;
+    job.coinb2 = coinb2;
     job.merkle_branches = tpl->merkle_branch;
     job.version = tpl->version;
     job.nbits = tpl->nbits;
@@ -39,18 +66,25 @@ std::optional<Job> JobManager::RefreshJobs(RefreshReason reason)
     job.block = tpl->block;
     job.block_template = tpl->block_template;
 
+    LOCK(m_mutex);
+    job.id = NewJobId();
     m_current_job = job;
     m_jobs[job.id] = job;
+    if (m_jobs.size() > 32) m_jobs.erase(m_jobs.begin());
     return m_current_job;
 }
 
-std::optional<Job> JobManager::CreateJobForSession(uint64_t session_id)
+std::optional<Job> JobManager::CurrentJob() const
+{
+    LOCK(m_mutex);
+    return m_current_job;
+}
+
+std::optional<Job> JobManager::CreateJobForSession(uint64_t session_id) const
 {
     LOCK(m_mutex);
     if (!m_current_job.has_value()) return std::nullopt;
-    if (!m_extranonce1.contains(session_id)) {
-        m_extranonce1.emplace(session_id, strprintf("%08x", session_id));
-    }
+    if (!m_extranonce1.contains(session_id)) return std::nullopt;
     return m_current_job;
 }
 

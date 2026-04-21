@@ -14,6 +14,7 @@ struct Session {
     uint64_t session_id{0};
     bool subscribed{false};
     bool authorized{false};
+    bool sent_initial_notify{false};
     std::string extranonce1;
     uint32_t extranonce2_size{4};
     double difficulty{1.0};

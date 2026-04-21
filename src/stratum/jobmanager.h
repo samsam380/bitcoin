@@ -5,7 +5,6 @@
 #ifndef BITCOIN_STRATUM_JOBMANAGER_H
 #define BITCOIN_STRATUM_JOBMANAGER_H
 
-#include <stratum/session.h>
 #include <stratum/template_provider.h>
 
 #include <primitives/block.h>
@@ -17,6 +16,8 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+
+class CTransaction;
 
 namespace interfaces {
 class BlockTemplate;
@@ -45,7 +46,8 @@ public:
     JobManager(TemplateProvider& template_provider, uint32_t extranonce2_size, const std::string& payout_address);
 
     std::optional<Job> RefreshJobs(RefreshReason reason);
-    std::optional<Job> CreateJobForSession(uint64_t session_id);
+    std::optional<Job> CurrentJob() const;
+    std::optional<Job> CreateJobForSession(uint64_t session_id) const;
     std::optional<Job> GetJob(const std::string& job_id) const;
 
     std::string GetSessionExtranonce1(uint64_t session_id);
@@ -53,6 +55,7 @@ public:
 
 private:
     std::string NewJobId();
+    std::pair<std::string, std::string> BuildCoinbaseSplit(const CTransaction& coinbase) const;
 
     TemplateProvider& m_template_provider;
     const uint32_t m_extranonce2_size;

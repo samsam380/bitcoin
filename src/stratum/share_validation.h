@@ -9,8 +9,10 @@
 #include <stratum/stratum_messages.h>
 
 #include <arith_uint256.h>
+#include <primitives/transaction.h>
 #include <uint256.h>
 
+#include <optional>
 #include <string>
 
 namespace stratum {
@@ -22,9 +24,13 @@ struct ShareValidationResult {
     bool accepted_block{false};
     std::string reject_reason;
     uint256 block_hash;
+    uint32_t ntime{0};
+    uint32_t nonce{0};
+    uint32_t version{0};
+    std::optional<CTransactionRef> coinbase;
 };
 
-ShareValidationResult ValidateShare(const SubmitRequest& req, const Session& session, const Job& job, const arith_uint256& pow_limit);
+ShareValidationResult ValidateShare(const SubmitRequest& req, const Session& session, const Job& job, const arith_uint256& share_target);
 
 } // namespace stratum
 

@@ -8,6 +8,7 @@
 #include <stratum/jobmanager.h>
 #include <stratum/session.h>
 #include <stratum/template_provider.h>
+
 #include <sync.h>
 #include <univalue.h>
 
@@ -20,6 +21,11 @@
 #include <unordered_map>
 
 class ArgsManager;
+class Sock;
+
+namespace interfaces {
+class Mining;
+}
 
 namespace interfaces {
 class Mining;
@@ -73,10 +79,24 @@ public:
     void Stop();
 
     UniValue HandleMessage(uint64_t session_id, const UniValue& request);
-    Session& GetOrCreateSession(uint64_t session_id);
     Info GetInfo() const;
 
 private:
+    struct ClientConn {
+        std::shared_ptr<Sock> sock;
+        std::thread thread;
+        mutable Mutex send_mutex;
+    };
+
+    Session& GetOrCreateSession(uint64_t session_id) EXCLUSIVE_LOCKS_REQUIRED(m_mutex);
+    void RemoveSession(uint64_t session_id);
+
+    bool SendJson(uint64_t session_id, const UniValue& obj);
+    void SendInitialMessages(uint64_t session_id);
+    void BroadcastNotify(const Job& job, bool send_set_difficulty);
+
+    void ListenerThread();
+    void ClientThread(uint64_t session_id, std::shared_ptr<Sock> sock);
     void ThreadRun();
 
     const Config m_config;
@@ -84,10 +104,14 @@ private:
     JobManager m_job_manager;
 
     std::atomic<bool> m_running{false};
-    std::thread m_thread;
+    std::thread m_refresh_thread;
+    std::thread m_listener_thread;
+    std::shared_ptr<Sock> m_listen_sock;
 
     mutable Mutex m_mutex;
     std::unordered_map<uint64_t, std::unique_ptr<Session>> m_sessions GUARDED_BY(m_mutex);
+    std::unordered_map<uint64_t, std::unique_ptr<ClientConn>> m_clients GUARDED_BY(m_mutex);
+    uint64_t m_next_session_id GUARDED_BY(m_mutex){1};
     uint64_t m_accepted_shares GUARDED_BY(m_mutex){0};
     uint64_t m_rejected_shares GUARDED_BY(m_mutex){0};
     uint64_t m_blocks_found GUARDED_BY(m_mutex){0};

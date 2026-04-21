@@ -1,30 +1,55 @@
 # Embedded Stratum V1 SOLO mining (MVP)
 
-Run a regtest node with embedded Stratum enabled:
+## Start a regtest node with Stratum
 
 ```bash
 bitcoind \
   -regtest=1 \
   -server=1 \
+  -rpcuser=u -rpcpassword=p \
   -stratum=1 \
   -stratumbind=127.0.0.1 \
   -stratumport=3333 \
+  -stratumdifficulty=1 \
   -stratumpayoutaddress=<regtest-address>
 ```
 
-Point a Stratum-v1 miner at:
+## Verify operation
 
-- Host: `127.0.0.1`
+```bash
+bitcoin-cli -regtest -rpcuser=u -rpcpassword=p getstratuminfo
+ss -ltnp | grep 3333
+```
+
+Expected:
+- `getstratuminfo.enabled=true`
+- `clients` increases when miners connect
+- `accepted_shares` and `blocks_found` increment while mining
+
+## Connect a Stratum v1 miner
+
+Point miner to:
+- URL/Host: `127.0.0.1`
 - Port: `3333`
-- Username: any non-empty worker name (MVP solo mode)
-- Password: ignored in MVP
+- User: any non-empty worker name (solo MVP)
+- Password: arbitrary (currently ignored)
 
-The node serves Stratum jobs from internal block-template construction and accepts `mining.submit` share submissions for local share accounting.
+## Manual regtest verification flow
+
+1. Start node with flags above.
+2. From Python or a Stratum client, send `mining.subscribe` then `mining.authorize`.
+3. Receive `mining.set_difficulty` and `mining.notify`.
+4. Solve the notify job against the advertised `nbits` and submit using `mining.submit`.
+5. Confirm chain height increased:
+
+```bash
+bitcoin-cli -regtest -rpcuser=u -rpcpassword=p getblockcount
+bitcoin-cli -regtest -rpcuser=u -rpcpassword=p getstratuminfo
+```
 
 ## Future work (post-MVP)
 
-- Full TCP session manager with worker fanout and async notify dispatch
-- Vardiff and per-worker target tuning
-- Stratum V2 / job-declaration support
-- DATUM-like federation and external template distribution hooks
-- Pooled payout accounting and durable share storage
+- Vardiff
+- Stratum V2 / job-declaration
+- DATUM-like federation/external template hooks
+- Pooled payout accounting and persistent share storage
