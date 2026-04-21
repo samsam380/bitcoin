@@ -27,7 +27,18 @@ namespace interfaces {
 class Mining;
 }
 
+namespace interfaces {
+class Mining;
+}
+
 namespace stratum {
+
+// TODO(stratum): Add vardiff.
+// TODO(stratum): Add Stratum V2 support.
+// TODO(stratum): Add job declaration and miner-selected templates.
+// TODO(stratum): Add pooled reward accounting.
+// TODO(stratum): Add miner username -> payout address mode.
+// TODO(stratum): Add external notification hooks / ZMQ integration.
 
 struct Config {
     bool enabled{false};
