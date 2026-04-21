@@ -6,55 +6,107 @@
 #define BITCOIN_STRATUM_SERVER_H
 
 #include <stratum/jobmanager.h>
+#include <stratum/session.h>
+#include <stratum/template_provider.h>
+
 #include <sync.h>
+#include <univalue.h>
 
 #include <atomic>
 #include <cstdint>
-#include <functional>
+#include <memory>
+#include <optional>
 #include <string>
 #include <thread>
+#include <unordered_map>
 
 class ArgsManager;
+class Sock;
+
+namespace interfaces {
+class Mining;
+}
 
 namespace stratum {
 
 struct Config {
     bool enabled{false};
+    std::string bind{"127.0.0.1"};
     uint16_t port{3333};
-    std::string address;
-    uint32_t difficulty{1};
+    uint32_t extranonce2_size{4};
+    double difficulty{1.0};
+    std::string payout_address;
+    bool version_rolling{false};
+    uint32_t version_rolling_mask{0x1fffe000};
+    int64_t job_refresh_ms{1000};
+    bool allow_self_select{false};
+};
+
+struct Info {
+    bool enabled{false};
+    std::string bind;
+    uint16_t port{0};
+    size_t clients{0};
+    std::string current_job_id;
+    int32_t current_height{0};
+    std::string current_prevhash;
+    uint64_t accepted_shares{0};
+    uint64_t rejected_shares{0};
+    uint64_t blocks_found{0};
+    bool version_rolling_enabled{false};
+    uint32_t version_rolling_mask{0};
 };
 
 class Server
 {
 public:
-    explicit Server(Config config);
+    Server(const Config& config, interfaces::Mining& mining);
     ~Server();
 
     bool Start();
     void Interrupt();
     void Stop();
 
-    UniValue HandleMessage(const UniValue& request);
-
-    void SetNotifyHook(std::function<void(const UniValue&)> notify_hook);
-    void SetShareSubmitHook(std::function<void(const UniValue&)> submit_hook);
+    UniValue HandleMessage(uint64_t session_id, const UniValue& request);
+    Info GetInfo() const;
 
 private:
+    struct ClientConn {
+        std::shared_ptr<Sock> sock;
+        std::thread thread;
+        mutable Mutex send_mutex;
+    };
+
+    Session& GetOrCreateSession(uint64_t session_id) EXCLUSIVE_LOCKS_REQUIRED(m_mutex);
+    void RemoveSession(uint64_t session_id);
+
+    bool SendJson(uint64_t session_id, const UniValue& obj);
+    void SendInitialMessages(uint64_t session_id);
+    void BroadcastNotify(const Job& job, bool send_set_difficulty);
+
+    void ListenerThread();
+    void ClientThread(uint64_t session_id, std::shared_ptr<Sock> sock);
     void ThreadRun();
 
     const Config m_config;
+    TemplateProvider m_template_provider;
     JobManager m_job_manager;
 
     std::atomic<bool> m_running{false};
-    std::thread m_thread;
+    std::thread m_refresh_thread;
+    std::thread m_listener_thread;
+    std::shared_ptr<Sock> m_listen_sock;
 
-    mutable Mutex m_callback_mutex;
-    std::function<void(const UniValue&)> m_notify_hook GUARDED_BY(m_callback_mutex);
-    std::function<void(const UniValue&)> m_submit_hook GUARDED_BY(m_callback_mutex);
+    mutable Mutex m_mutex;
+    std::unordered_map<uint64_t, std::unique_ptr<Session>> m_sessions GUARDED_BY(m_mutex);
+    std::unordered_map<uint64_t, std::unique_ptr<ClientConn>> m_clients GUARDED_BY(m_mutex);
+    uint64_t m_next_session_id GUARDED_BY(m_mutex){1};
+    uint64_t m_accepted_shares GUARDED_BY(m_mutex){0};
+    uint64_t m_rejected_shares GUARDED_BY(m_mutex){0};
+    uint64_t m_blocks_found GUARDED_BY(m_mutex){0};
 };
 
-Config GetConfig(const ArgsManager& args);
+Config GetConfig(const ArgsManager& args, bool is_regtest);
 
 } // namespace stratum
 
