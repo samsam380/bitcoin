@@ -1126,7 +1126,24 @@ static RPCHelpMan getstratuminfo()
     return RPCHelpMan{"getstratuminfo",
         "Returns runtime information about the embedded Stratum server.",
         {},
-        RPCResult{RPCResult::Type::OBJ, "", ""},
+        RPCResult{
+            RPCResult::Type::OBJ, "", "", {
+                {RPCResult::Type::BOOL, "enabled", "Whether embedded Stratum is enabled"},
+                {RPCResult::Type::BOOL, "listening", "Whether the Stratum listener socket is active"},
+                {RPCResult::Type::BOOL, "accept_loop_running", "Whether the Stratum accept loop thread is running"},
+                {RPCResult::Type::STR, "bind", "Configured Stratum bind address"},
+                {RPCResult::Type::NUM, "port", "Configured Stratum bind port"},
+                {RPCResult::Type::NUM, "clients", "Number of currently connected Stratum clients"},
+                {RPCResult::Type::STR, "current_job_id", "Current active Stratum job id"},
+                {RPCResult::Type::NUM, "current_height", "Current active Stratum job height"},
+                {RPCResult::Type::STR_HEX, "current_prevhash", "Previous block hash for the current active Stratum job"},
+                {RPCResult::Type::NUM, "accepted_shares", "Total accepted shares"},
+                {RPCResult::Type::NUM, "rejected_shares", "Total rejected shares"},
+                {RPCResult::Type::NUM, "blocks_found", "Total blocks found via Stratum submissions"},
+                {RPCResult::Type::BOOL, "version_rolling_enabled", "Whether version rolling is enabled"},
+                {RPCResult::Type::STR_HEX, "version_rolling_mask", "Version rolling mask as 8-hex-digit string"},
+            }
+        },
         RPCExamples{HelpExampleCli("getstratuminfo", "") + HelpExampleRpc("getstratuminfo", "")},
         [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue {
             NodeContext& node = EnsureAnyNodeContext(request.context);
